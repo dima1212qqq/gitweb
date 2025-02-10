@@ -31,3 +31,15 @@
       --lumo-space-xs: 0.1875rem;
 
     }
+    .layout-class {
+          display: grid;
+          grid-template-columns: 3fr 3fr;
+          gap: var(--lumo-space-m);
+    }
+
+
+    @media (max-width: 760px) {
+          .layout-class {
+                grid-template-columns: auto;
+          }
+    }

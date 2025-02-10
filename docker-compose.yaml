@@ -1,0 +1,8 @@
+services:
+  app:
+    image: gitweb:1.0-SNAPSHOT
+    ports:
+      - "8080:8088"  # на хосте порт 8080, в контейнере приложение слушает на 8088
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+    restart: unless-stopped
