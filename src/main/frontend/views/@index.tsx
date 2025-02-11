@@ -12,7 +12,6 @@ import { DiffEditor } from "@monaco-editor/react";
 import CommitInfo from "Frontend/generated/ru/dovakun/services/GitEndpoint/CommitInfo";
 import { GitEndpoint } from "Frontend/generated/endpoints";
 import { useMediaQuery } from "react-responsive";
-// Импорт Framer Motion для мобильной анимации
 import { motion, AnimatePresence } from "framer-motion";
 import RollbackDialog from "Frontend/component/RollbackDialog";
 
@@ -50,13 +49,13 @@ export const config: ViewConfig = {
         order: 0,
         icon: 'line-awesome/svg/file.svg'
     },
-    title: 'Main'
+    title: 'Main',
+    rolesAllowed: ['ADMIN'],
 };
 
 type MobileStep = 'commits' | 'files' | 'editor';
 
 export default function MainView() {
-    // Основные состояния из существующего функционала
     const [isDialogOpen, setIsDialogOpen] = useState(false);
 
     const handleRollbackCommit = () => {
@@ -67,7 +66,6 @@ export default function MainView() {
         GitEndpoint.rollbackCommit(selectedCommit.commitHash)
             .then((message: string) => {
                 alert(message);
-                // При необходимости можно обновить список коммитов или перезагрузить данные
             })
             .catch((error: any) => {
                 console.error("Ошибка при откате коммита:", error);
@@ -101,7 +99,6 @@ export default function MainView() {
         return (storedStep as MobileStep) || 'commits';
     });
 
-    // Синхронизация состояний в localStorage (как и ранее)
     useEffect(() => {
         localStorage.setItem("selectedCommit", JSON.stringify(selectedCommit));
     }, [selectedCommit]);
@@ -137,7 +134,6 @@ export default function MainView() {
         }
     }, [selectedCommit]);
 
-    // При выборе коммита и файла запрашиваем версии файла
     useEffect(() => {
         if (selectedCommit && selectedFile) {
             GitEndpoint.getFileVersions(selectedCommit.commitHash, selectedFile)
@@ -150,10 +146,8 @@ export default function MainView() {
         localStorage.setItem('mobileStep', mobileStep);
     }, [mobileStep]);
 
-    // Основой рендер для десктопной и мобильной версий
     const desktopLayout = (
         <div className="h-full w-full">
-            {/* Шапка */}
             <header className="w-full">
                 <HorizontalLayout theme="spacing" className="w-full items-center justify-between p-m">
                     <span className="text-l font-semibold">Редактор</span>
@@ -168,7 +162,6 @@ export default function MainView() {
             />
             <SplitLayout orientation="vertical">
                 <div className="w-full flex-grow layout-class">
-                    {/* Список коммитов */}
                     <VerticalLayout theme="spacing padding" className="rounded-m">
                         <Grid
                             key="commits"
@@ -197,7 +190,6 @@ export default function MainView() {
                         </Grid>
                     </VerticalLayout>
 
-                    {/* Список изменённых файлов */}
                     <VerticalLayout theme="spacing padding" className="rounded-m">
                         <Grid
                             title="Измененные файлы"
@@ -223,7 +215,6 @@ export default function MainView() {
                         </HorizontalLayout>
                         <HorizontalLayout className="gap-m">
                             <Button>Создать коммит</Button>
-                            {/* Добавляем обработчик для отката коммита */}
                             <Button onClick={() => setIsDialogOpen(true)}>Откатить файлы</Button>
 
                         </HorizontalLayout>
@@ -367,7 +358,6 @@ export default function MainView() {
 
     return (
         <>
-
             {isMobile ? mobileLayout : desktopLayout}
         </>
     );

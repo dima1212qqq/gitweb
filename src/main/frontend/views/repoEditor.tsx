@@ -4,6 +4,7 @@ import { SplitLayout, Button, TextField } from "@vaadin/react-components";
 import Editor from "@monaco-editor/react";
 import { GitEndpoint } from "Frontend/generated/endpoints";
 import {debounce} from "@mui/material";
+import {ViewConfig} from "@vaadin/hilla-file-router/types.js";
 
 export type FileNode = {
     name: string;
@@ -11,18 +12,21 @@ export type FileNode = {
     directory: boolean;
     children?: FileNode[];
 };
+export const config: ViewConfig = {
+    menu: {
+        order: 2,
+        icon: 'line-awesome/svg/file.svg'
+    },
+    title: 'editor',
+    rolesAllowed: ['ADMIN'],
+};
 
 export default function RepoEditor() {
-    // Состояние дерева файлов
     const [repoTree, setRepoTree] = useState<FileNode[]>([]);
-    // Путь выбранного файла (относительно корня репозитория)
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
-    // Содержимое выбранного файла
     const [fileContent, setFileContent] = useState<string>("");
-    // Сообщение для коммита (если потребуется отдельный коммит)
     const [commitMessage, setCommitMessage] = useState<string>("");
 
-    // Загружаем дерево файлов при загрузке страницы
     useEffect(() => {
         GitEndpoint.getRepositoryTree()
             .then((data: FileNode[]) => {
@@ -34,7 +38,6 @@ export default function RepoEditor() {
             );
     }, []);
 
-    // При выборе файла загружаем его содержимое
     useEffect(() => {
         if (selectedFile) {
             GitEndpoint.getFileContent("HEAD", selectedFile)
@@ -47,7 +50,6 @@ export default function RepoEditor() {
         }
     }, [selectedFile]);
 
-    // Дебаунс-функция для авто-сохранения файла
     const debouncedUpdateFile = useMemo(
         () =>
             debounce((newContent: string) => {
@@ -60,14 +62,12 @@ export default function RepoEditor() {
         [selectedFile]
     );
 
-    // Обработчик изменений в редакторе
     const handleEditorChange = (value: string | undefined) => {
         const newContent = value || "";
         setFileContent(newContent);
         debouncedUpdateFile(newContent);
     };
 
-    // Пример компонента дерева файлов (можно использовать свой вариант)
     const FileTree: React.FC<{
         treeData: FileNode[];
         onFileSelect: (filePath: string) => void;
@@ -120,7 +120,6 @@ export default function RepoEditor() {
 
     return (
         <SplitLayout orientation="horizontal">
-            {/* Левая панель – дерево файлов */}
             <div
                 style={{
                     width: "30%",
@@ -133,7 +132,6 @@ export default function RepoEditor() {
                 <FileTree treeData={repoTree} onFileSelect={setSelectedFile} />
             </div>
 
-            {/* Правая панель – редактор кода */}
             <div style={{ width: "70%", padding: "1rem" }}>
                 <h3>Редактор кода</h3>
                 {selectedFile ? (
@@ -186,9 +184,6 @@ export default function RepoEditor() {
     );
 }
 
-/**
- * Утилита для определения языка редактора по расширению файла.
- */
 function getLanguageFromFileName(fileName: string): string {
     const extension = fileName.split(".").pop()?.toLowerCase();
     switch (extension) {
