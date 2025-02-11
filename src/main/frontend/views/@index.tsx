@@ -14,6 +14,7 @@ import { GitEndpoint } from "Frontend/generated/endpoints";
 import { useMediaQuery } from "react-responsive";
 // Импорт Framer Motion для мобильной анимации
 import { motion, AnimatePresence } from "framer-motion";
+import RollbackDialog from "Frontend/component/RollbackDialog";
 
 type FileVersions = {
     original: string;
@@ -56,6 +57,7 @@ type MobileStep = 'commits' | 'files' | 'editor';
 
 export default function MainView() {
     // Основные состояния из существующего функционала
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
 
     const handleRollbackCommit = () => {
         if (!selectedCommit) {
@@ -158,6 +160,12 @@ export default function MainView() {
                     <Button theme="secondary">Выйти</Button>
                 </HorizontalLayout>
             </header>
+            <RollbackDialog
+                isOpen={isDialogOpen}
+                onClose={() => setIsDialogOpen(false)}
+                commitHash={selectedCommit?.commitHash || ""}
+                changeList={changeList || []}
+            />
             <SplitLayout orientation="vertical">
                 <div className="w-full flex-grow layout-class">
                     {/* Список коммитов */}
@@ -216,7 +224,8 @@ export default function MainView() {
                         <HorizontalLayout className="gap-m">
                             <Button>Создать коммит</Button>
                             {/* Добавляем обработчик для отката коммита */}
-                            <Button onClick={handleRollbackCommit}>Откат изменений</Button>
+                            <Button onClick={() => setIsDialogOpen(true)}>Откатить файлы</Button>
+
                         </HorizontalLayout>
                     </HorizontalLayout>
                     <DiffEditor
@@ -358,6 +367,7 @@ export default function MainView() {
 
     return (
         <>
+
             {isMobile ? mobileLayout : desktopLayout}
         </>
     );
