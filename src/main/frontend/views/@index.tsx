@@ -1,24 +1,40 @@
-import { ViewConfig } from '@vaadin/hilla-file-router/types.js';
-import { useEffect, useState } from "react";
+import {ViewConfig} from '@vaadin/hilla-file-router/types.js';
+import {useEffect, useState} from "react";
 import {
-    Button,
+    Button, Checkbox, CheckboxGroup, Dialog,
     Grid,
     GridColumn,
     HorizontalLayout,
-    SplitLayout,
     VerticalLayout
 } from "@vaadin/react-components";
-import { DiffEditor } from "@monaco-editor/react";
-import CommitInfo from "Frontend/generated/ru/dovakun/services/GitEndpoint/CommitInfo";
-import { GitEndpoint } from "Frontend/generated/endpoints";
-import { useMediaQuery } from "react-responsive";
-import { motion, AnimatePresence } from "framer-motion";
-import RollbackDialog from "Frontend/component/RollbackDialog";
+import {DiffEditor} from "@monaco-editor/react";
+import {useMediaQuery} from "react-responsive";
+import {motion, AnimatePresence} from "framer-motion";
+import {GitEndpoint} from "Frontend/generated/endpoints";
 
 type FileVersions = {
     original: string;
     modified: string;
 };
+type CommitData = {
+    commitHash: string;
+    message: string;
+    date: string;
+    files?: string[]; // Добавляем поддержку списка изменённых файлов
+};
+
+
+export const config: ViewConfig = {
+    menu: {
+        order: 0,
+        icon: 'line-awesome/svg/file.svg'
+    },
+    title: 'Main',
+    rolesAllowed: ['ADMIN'],
+};
+
+type MobileStep = 'commits' | 'files' | 'editor';
+
 
 function getLanguageFromFileName(fileName: string): string {
     const extension = fileName.split('.').pop()?.toLowerCase();
@@ -44,197 +60,236 @@ function getLanguageFromFileName(fileName: string): string {
     }
 }
 
-export const config: ViewConfig = {
-    menu: {
-        order: 0,
-        icon: 'line-awesome/svg/file.svg'
-    },
-    title: 'Main',
-    rolesAllowed: ['ADMIN'],
-};
-
-type MobileStep = 'commits' | 'files' | 'editor';
-
 export default function MainView() {
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
+    const [isRollbackDialogOpen, setIsRollbackDialogOpen] = useState(false);
+    const [selectedFilesForCommit, setSelectedFilesForCommit] = useState<string[]>([]);
+    const [selectedFilesForRollback, setSelectedFilesForRollback] = useState<string[]>([]);
+    const [unstagedFiles, setUnstagedFiles] = useState<string[]>([]);
+    const [selectedCommit, setSelectedCommit] = useState<CommitData | null>();
+    const [commits, setCommits] = useState<CommitData[]>([]);
+    const [selectedFile, setSelectedFile] = useState<string | null>();
+    const [changeList, setChangeList] = useState<string[]>([]);
+    const [fileVersions, setFileVersions] = useState<FileVersions>({original: "", modified: ""});
 
-    const handleRollbackCommit = () => {
-        if (!selectedCommit) {
-            alert("Коммит не выбран");
-            return;
-        }
-        GitEndpoint.rollbackCommit(selectedCommit.commitHash)
-            .then((message: string) => {
-                alert(message);
-            })
-            .catch((error: any) => {
-                console.error("Ошибка при откате коммита:", error);
-                alert("Ошибка при откате коммита: " + error.message);
-            });
-    };
+    const isMobile = useMediaQuery({query: '(max-width: 768px)'});
+    const [mobileStep, setMobileStep] = useState<MobileStep>('commits');
 
-    const [selectedCommit, setSelectedCommit] = useState<CommitInfo | null| undefined>(() => {
-        const stored = localStorage.getItem("selectedCommit");
-        return stored ? JSON.parse(stored) : null;
-    });
-    const [commits, setCommits] = useState<CommitInfo[]>(() => {
-        const stored = localStorage.getItem("commits");
-        return stored ? JSON.parse(stored) : [];
-    });
-    const [selectedFile, setSelectedFile] = useState<string | null>(() => {
-        const stored = localStorage.getItem("selectedFile");
-        return stored ? JSON.parse(stored) : null;
-    });
-    const [changeList, setChangeList] = useState<string[] | null>(() => {
-        const stored = localStorage.getItem("changeList");
-        return stored ? JSON.parse(stored) : [];
-    });
-    const [fileVersions, setFileVersions] = useState<FileVersions>(() => {
-        const stored = localStorage.getItem("fileVersions");
-        return stored ? JSON.parse(stored) : { original: "", modified: "" };
-    });
-    const isMobile = useMediaQuery({ query: '(max-width: 768px)' });
-    const [mobileStep, setMobileStep] = useState<MobileStep>(() => {
-        const storedStep = localStorage.getItem('mobileStep');
-        return (storedStep as MobileStep) || 'commits';
-    });
-
+    //
     useEffect(() => {
-        localStorage.setItem("selectedCommit", JSON.stringify(selectedCommit));
-    }, [selectedCommit]);
+        const fetchCommits = async () => {
+            try {
+                // Загружаем список изменённых файлов (незакоммиченные изменения)
+                const uncommittedChanges = await GitEndpoint.getUncommittedChanges();
+                setUnstagedFiles(uncommittedChanges);
 
-    useEffect(() => {
-        localStorage.setItem("commits", JSON.stringify(commits));
-    }, [commits]);
+                const unstagedCommit: CommitData = {
+                    commitHash: "unstaged",
+                    message: "Незакоммиченные изменения",
+                    date: "Текущий",
+                    files: uncommittedChanges
+                };
 
-    useEffect(() => {
-        localStorage.setItem("selectedFile", JSON.stringify(selectedFile));
-    }, [selectedFile]);
+                // Преобразуем данные в нужный формат
+                const rawCommits = await GitEndpoint.getAllCommits();
 
-    useEffect(() => {
-        localStorage.setItem("changeList", JSON.stringify(changeList));
-    }, [changeList]);
+                const commitsData: CommitData[] = (rawCommits as Record<string, any>[]).map(commit => ({
+                    commitHash: commit.commitHash || "unknown",
+                    message: commit.message || "Без описания",
+                    date: commit.date || "Неизвестно",
+                    files: Array.isArray(commit.files) ? commit.files : []
+                }));
 
-    useEffect(() => {
-        localStorage.setItem("fileVersions", JSON.stringify(fileVersions));
-    }, [fileVersions]);
 
-    useEffect(() => {
-        GitEndpoint.getAllCommits().then(setCommits);
+                setCommits([unstagedCommit, ...commitsData]); // Добавляем "unstaged" в начало
+            } catch (error) {
+                console.error("Ошибка загрузки коммитов:", error);
+            }
+        };
+        fetchCommits();
     }, []);
 
+
     useEffect(() => {
-        if (selectedCommit != null) {
-            GitEndpoint.getChangedFiles(selectedCommit.commitHash)
-                .then((data) => {
-                    console.log("Полученные данные:", data);
-                    setChangeList(data);
-                })
-                .catch(err => console.error(err));
-        }
+        const fetchChangedFiles = async () => {
+            if (!selectedCommit) return;
+            try {
+                const data = await GitEndpoint.getChangedFiles(selectedCommit.commitHash);
+                setChangeList(data);
+            } catch (error) {
+                console.error("Ошибка загрузки списка изменённых файлов:", error);
+            }
+        };
+        fetchChangedFiles();
     }, [selectedCommit]);
 
     useEffect(() => {
-        if (selectedCommit && selectedFile) {
-            GitEndpoint.getFileVersions(selectedCommit.commitHash, selectedFile)
-                .then(setFileVersions)
-                .catch(err => console.error(err));
-        }
+        const fetchFileVersions = async () => {
+            if (!selectedCommit || !selectedFile) return;
+            try {
+                const data = await GitEndpoint.getFileVersions(selectedCommit.commitHash, selectedFile);
+                setFileVersions({
+                    original: data.original || "",
+                    modified: data.modified || ""
+                });
+            } catch (error) {
+                console.error("Ошибка загрузки содержимого файлов:", error);
+            }
+        };
+        fetchFileVersions();
     }, [selectedCommit, selectedFile]);
 
-    useEffect(() => {
-        localStorage.setItem('mobileStep', mobileStep);
-    }, [mobileStep]);
+    const openCommitDialog = () => {
+        setSelectedFilesForCommit(changeList);
+        setIsCommitDialogOpen(true);
+    };
+
+    const openRollbackDialog = () => {
+        setSelectedFilesForRollback(changeList);
+        setIsRollbackDialogOpen(true);
+    };
+
+    const handleCommit = async () => {
+        const message = prompt("Введите сообщение коммита:");
+        if (message && selectedFilesForCommit.length > 0) {
+            try {
+                await GitEndpoint.createCommit(selectedFilesForCommit, message);
+                alert("Коммит создан!");
+                setIsCommitDialogOpen(false);
+                setSelectedCommit(null);
+                setUnstagedFiles([]);
+                setFileVersions({ original: "", modified: "" });
+            } catch (error) {
+                console.error("Ошибка создания коммита:", error);
+                alert("Ошибка при создании коммита.");
+            }
+        }
+    };
+
+    const handleRollback = async () => {
+        if (selectedFilesForRollback.length === 0) return;
+        try {
+            await GitEndpoint.rollbackChanges(selectedFilesForRollback);
+            alert("Файлы откатаны!");
+
+            // ⏳ Перезагружаем незакоммиченные файлы и коммиты
+            const uncommittedChanges = await GitEndpoint.getUncommittedChanges();
+            setUnstagedFiles(uncommittedChanges);
+
+            const unstagedCommit: CommitData = {
+                commitHash: "unstaged",
+                message: "Незакоммиченные изменения",
+                date: "Текущий",
+                files: uncommittedChanges
+            };
+
+            const rawCommits = await GitEndpoint.getAllCommits();
+            const commitsData: CommitData[] = (rawCommits as Record<string, any>[]).map(commit => ({
+                commitHash: commit.commitHash || "unknown",
+                message: commit.message || "Без описания",
+                date: commit.date || "Неизвестно",
+                files: Array.isArray(commit.files) ? commit.files : []
+            }));
+
+            setCommits([unstagedCommit, ...commitsData]);
+            setSelectedCommit(unstagedCommit); // 🟢 Выбираем "незакоммиченные" после отката
+            setChangeList(uncommittedChanges); // 🟢 Обновляем список файлов в Grid
+
+            setIsRollbackDialogOpen(false);
+        } catch (error) {
+            console.error("Ошибка отката изменений:", error);
+            alert("Ошибка при откате изменений.");
+        }
+    };
 
     const desktopLayout = (
-        <div className="h-full w-full">
-            <header className="w-full">
-                <HorizontalLayout theme="spacing" className="w-full items-center justify-between p-m">
-                    <span className="text-l font-semibold">Редактор</span>
-                    <Button theme="secondary">Выйти</Button>
-                </HorizontalLayout>
-            </header>
-            <RollbackDialog
-                isOpen={isDialogOpen}
-                onClose={() => setIsDialogOpen(false)}
-                commitHash={selectedCommit?.commitHash || ""}
-                changeList={changeList || []}
-            />
-            <SplitLayout orientation="vertical">
-                <div className="w-full flex-grow layout-class">
-                    <VerticalLayout theme="spacing padding" className="rounded-m">
-                        <Grid
-                            key="commits"
-                            title="Коммиты"
-                            items={commits}
-                            theme="row-stripes"
-                            onActiveItemChanged={(e) => {
-                                const grid = e.target as any;
-                                grid.activeItem = e.detail.value;
-                                setSelectedCommit(e.detail.value);
-                                setSelectedFile(null);
-                                setChangeList([]);
-                                setFileVersions({ original: "", modified: "" });
-                            }}
-                        >
-                            <GridColumn
-                                path="commitId"
-                                header="История"
-                                renderer={({ item }) => (
-                                    <div>
-                                        <div>{item.commitId}</div>
-                                        <div style={{ fontSize: '0.875rem', color: 'gray' }}>{item.date}</div>
-                                    </div>
-                                )}
-                            />
-                        </Grid>
-                    </VerticalLayout>
+        <div className="h-full w-full p-m">
+            <div className="grid grid-cols-12 gap-4 h-full">
+                <div className="col-span-3 bg-white shadow-md rounded-md p-4">
+                    <h3 className="font-semibold text-lg mb-2">История</h3>
+                    <Grid
+                        className="h-full"
+                        items={commits}
+                        theme="row-stripes"
+                        onActiveItemChanged={(e) => {
+                            const grid = e.target as any;
+                            grid.activeItem = e.detail.value;
+                            setSelectedCommit(e.detail.value);
+                            setSelectedFile(null);
+                            setFileVersions({ original: "", modified: "" });
+                            console.log(selectedCommit)
 
-                    <VerticalLayout theme="spacing padding" className="rounded-m">
-                        <Grid
-                            title="Измененные файлы"
-                            items={changeList}
-                            theme="row-stripes"
-                            onActiveItemChanged={(e) => {
-                                const grid = e.target as any;
-                                const filePath = e.detail.value as string | null;
-                                grid.activeItem = filePath;
-                                setSelectedFile(filePath);
-                            }}
-                        >
-                            <GridColumn header="Изменённые файлы:" renderer={({ item }) => <div>{item}</div>} />
-                        </Grid>
-                    </VerticalLayout>
-                </div>
-                <VerticalLayout theme="spacing padding">
-                    <HorizontalLayout className="w-full justify-between">
-                        <HorizontalLayout>
-                            <div style={{ fontSize: '1.575rem' }} className="flex-wrap">
-                                {selectedFile ? `Файл: ${selectedFile}` : 'Файл не выбран'}
+                        }}
+                    >
+                        <GridColumn header="История" renderer={({ item }) => (
+                            <div>
+                                <div>{item.message}</div>
+                                <div className="text-sm text-gray-500">{item.date}</div>
                             </div>
-                        </HorizontalLayout>
-                        <HorizontalLayout className="gap-m">
-                            <Button>Создать коммит</Button>
-                            <Button onClick={() => setIsDialogOpen(true)}>Откатить файлы</Button>
+                        )} />
+                    </Grid>
+                </div>
 
-                        </HorizontalLayout>
-                    </HorizontalLayout>
+                <div className="col-span-3 bg-white shadow-md rounded-md p-m">
+                    <h3 className="font-semibold text-lg mb-2">Изменённые файлы</h3>
+                    <Grid
+                        className="h-full"
+                        items={selectedCommit?.files || []}
+                        theme="row-stripes"
+                        onActiveItemChanged={(e) => {
+                            const grid = e.target as any;
+                            grid.activeItem = e.detail.value;
+                            setSelectedFile(e.detail.value);
+                            console.log(fileVersions.original)
+                            console.log(fileVersions.modified)
+                        }}
+                    >
+                        <GridColumn header="Файл" renderer={({ item }) => <div>{item}</div>} />
+                    </Grid>
+                </div>
+
+                <div className="col-span-6 bg-white shadow-md rounded-md p-m flex flex-col">
+                    <div className="flex justify-between items-center mb-4">
+                        <div className="text-xl font-semibold">
+                            {selectedFile ? `Файл: ${selectedFile}` : "Файл не выбран"}
+                        </div>
+                        {selectedCommit?.commitHash === "unstaged" && (
+                            <div className="flex gap-m">
+                                <Button theme="large primary" onClick={openCommitDialog}>Создать коммит</Button>
+                                <Button theme="large error" onClick={openRollbackDialog}>Откатить файлы</Button>
+                            </div>
+                        )}
+                    </div>
                     <DiffEditor
                         original={fileVersions.original}
                         modified={fileVersions.modified}
-                        language={selectedFile ? getLanguageFromFileName(selectedFile) : 'plaintext'}
+                        language="plaintext"
                         options={{
                             renderSideBySide: false,
-                            wordWrap: 'on',
+                            wordWrap: "on",
                             minimap: { enabled: false },
                             fontSize: 16,
                             lineHeight: 18,
                         }}
-                        height="75vh"
-                        width="98vw"
+                        height="100%"
+                        width="100%"
                     />
-                </VerticalLayout>
-            </SplitLayout>
+                </div>
+            </div>
+
+            <Dialog opened={isCommitDialogOpen} onOpenedChanged={(e) => setIsCommitDialogOpen(e.detail.value)}>
+                <CheckboxGroup theme="vertical" label="Выберите файлы для коммита" value={selectedFilesForCommit} onValueChanged={(e) => setSelectedFilesForCommit(e.detail.value)}>
+                    {unstagedFiles.map(file => <Checkbox key={file} value={file} label={file} />)}
+                </CheckboxGroup>
+                <Button onClick={handleCommit}>Закоммитить</Button>
+            </Dialog>
+
+            <Dialog opened={isRollbackDialogOpen} onOpenedChanged={(e) => setIsRollbackDialogOpen(e.detail.value)}>
+                <CheckboxGroup  theme="vertical" label="Выберите файлы для отката" value={selectedFilesForRollback} onValueChanged={(e) => setSelectedFilesForRollback(e.detail.value)}>
+                    {unstagedFiles.map(file => <Checkbox key={file} value={file} label={file} />)}
+                </CheckboxGroup>
+                <Button onClick={handleRollback}>Откатить</Button>
+            </Dialog>
         </div>
     );
 
@@ -243,9 +298,9 @@ export default function MainView() {
             {mobileStep === 'commits' && (
                 <motion.div
                     key="commits"
-                    initial={{ opacity: 0, x: 50 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -50 }}
+                    initial={{opacity: 0, x: 50}}
+                    animate={{opacity: 1, x: 0}}
+                    exit={{opacity: 0, x: -50}}
                     className="h-full w-full"
                 >
                     <header className="w-full">
@@ -255,27 +310,26 @@ export default function MainView() {
                     </header>
                     <VerticalLayout theme="spacing padding" className="w-full h-full">
                         <Grid
-                            key="commits"
-                            title="Коммиты"
+                            className="h-full"
                             items={commits}
                             theme="row-stripes"
                             onActiveItemChanged={(e) => {
                                 const grid = e.target as any;
                                 grid.activeItem = e.detail.value;
                                 setSelectedCommit(e.detail.value);
-                                setMobileStep('files');
+                                setSelectedFile(null);
+                                setFileVersions({ original: "", modified: "" });
+                                setMobileStep("files")
+                                console.log(selectedCommit)
+
                             }}
                         >
-                            <GridColumn
-                                path="commitId"
-                                header="История"
-                                renderer={({ item }) => (
-                                    <div>
-                                        <div>{item.commitId}</div>
-                                        <div style={{ fontSize: '0.875rem', color: 'gray' }}>{item.date}</div>
-                                    </div>
-                                )}
-                            />
+                            <GridColumn header="История" renderer={({ item }) => (
+                                <div>
+                                    <div>{item.message}</div>
+                                    <div className="text-sm text-gray-500">{item.date}</div>
+                                </div>
+                            )} />
                         </Grid>
                     </VerticalLayout>
                 </motion.div>
@@ -284,9 +338,9 @@ export default function MainView() {
             {mobileStep === 'files' && (
                 <motion.div
                     key="files"
-                    initial={{ opacity: 0, x: 50 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -50 }}
+                    initial={{opacity: 0, x: 50}}
+                    animate={{opacity: 1, x: 0}}
+                    exit={{opacity: 0, x: -50}}
                     className="h-full w-full"
                 >
                     <header className="w-full">
@@ -297,22 +351,19 @@ export default function MainView() {
                     </header>
                     <VerticalLayout theme="spacing padding" className="w-full h-full">
                         <Grid
-                            key="files"
-                            title="Измененные файлы"
-                            items={changeList}
+                            className="h-full"
+                            items={selectedCommit?.files || []}
                             theme="row-stripes"
                             onActiveItemChanged={(e) => {
                                 const grid = e.target as any;
-                                const filePath = e.detail.value as string | null;
-                                grid.activeItem = filePath;
-                                setSelectedFile(filePath);
-                                setMobileStep("editor");
+                                grid.activeItem = e.detail.value;
+                                setSelectedFile(e.detail.value);
+                                setMobileStep("editor")
+                                console.log(fileVersions.original)
+                                console.log(fileVersions.modified)
                             }}
                         >
-                            <GridColumn
-                                header="Изменённые файлы:"
-                                renderer={({ item }) => <div>{item}</div>}
-                            />
+                            <GridColumn header="Файл" renderer={({ item }) => <div>{item}</div>} />
                         </Grid>
                     </VerticalLayout>
                 </motion.div>
@@ -321,9 +372,9 @@ export default function MainView() {
             {mobileStep === 'editor' && (
                 <motion.div
                     key="editor"
-                    initial={{ opacity: 0, x: 50 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -50 }}
+                    initial={{opacity: 0, x: 50}}
+                    animate={{opacity: 1, x: 0}}
+                    exit={{opacity: 0, x: -50}}
                     className="h-full w-full"
                 >
                     <header className="w-full">
@@ -333,7 +384,7 @@ export default function MainView() {
                         </HorizontalLayout>
                     </header>
                     <VerticalLayout theme="spacing padding">
-                        <div style={{ fontSize: '1.575rem' }} className="flex-wrap">
+                        <div style={{fontSize: '1.575rem'}} className="flex-wrap">
                             {selectedFile ? `Файл: ${selectedFile}` : 'Файл не выбран'}
                         </div>
                         <DiffEditor
@@ -343,7 +394,7 @@ export default function MainView() {
                             options={{
                                 renderSideBySide: false,
                                 wordWrap: 'on',
-                                minimap: { enabled: false },
+                                minimap: {enabled: false},
                                 fontSize: 16,
                                 lineHeight: 18,
                             }}

@@ -2,9 +2,9 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { SplitLayout, Button, TextField } from "@vaadin/react-components";
 import Editor from "@monaco-editor/react";
-import { GitEndpoint } from "Frontend/generated/endpoints";
 import {debounce} from "@mui/material";
 import {ViewConfig} from "@vaadin/hilla-file-router/types.js";
+import {GitEndpoint} from "Frontend/generated/endpoints";
 
 export type FileNode = {
     name: string;
@@ -152,28 +152,6 @@ export default function RepoEditor() {
                                 value={commitMessage}
                                 onChange={(e: any) => setCommitMessage(e.target.value)}
                             />
-                            <Button
-                                onClick={() => {
-                                    if (!selectedFile) {
-                                        alert("Выберите файл для коммита");
-                                        return;
-                                    }
-                                    if (!commitMessage) {
-                                        alert("Введите сообщение коммита");
-                                        return;
-                                    }
-                                    GitEndpoint.commitFile(selectedFile, fileContent, commitMessage)
-                                        .then((commitHash: string) => {
-                                            alert(`Коммит создан: ${commitHash}`);
-                                        })
-                                        .catch((err: any) => {
-                                            console.error("Ошибка при коммите", err);
-                                            alert("Ошибка при коммите: " + err.message);
-                                        });
-                                }}
-                            >
-                                Сделать коммит
-                            </Button>
                         </div>
                     </>
                 ) : (

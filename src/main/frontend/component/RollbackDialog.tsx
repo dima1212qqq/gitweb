@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Button, Checkbox, Dialog, VerticalLayout } from "@vaadin/react-components";
-import { GitEndpoint } from "Frontend/generated/endpoints";
 
 interface RollbackDialogProps {
     isOpen: boolean;
@@ -27,16 +26,6 @@ export default function RollbackDialog({ isOpen, onClose, commitHash, changeList
             alert("Выберите файлы для отката!");
             return;
         }
-
-        GitEndpoint.restoreFiles(commitHash, selectedFiles)
-            .then((message: string) => {
-                alert(message);
-                onClose();
-            })
-            .catch((error: any) => {
-                console.error("Ошибка при откате файлов:", error);
-                alert("Ошибка: " + error.message);
-            });
         console.log(commitHash)
         console.log(changeList)
     };
