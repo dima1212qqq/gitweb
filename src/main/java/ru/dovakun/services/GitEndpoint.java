@@ -29,12 +29,15 @@ import java.util.Map;
 @BrowserCallable
 @AnonymousAllowed
 public class GitEndpoint {
-    @Value("${git.localRepo}")
-    private String pathRepo;
 
+    private final String pathRepo;
     private final GitService gitService;
 
-    public GitEndpoint(GitService gitService) {
+    public GitEndpoint(@Value("${git.localRepo}") String pathRepo, GitService gitService) {
+        if (pathRepo.isBlank()) {
+            throw new IllegalArgumentException("Git repository path cannot be null or empty");
+        }
+        this.pathRepo = pathRepo;
         this.gitService = gitService;
     }
 

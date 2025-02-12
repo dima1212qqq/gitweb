@@ -20,12 +20,13 @@ import java.util.*;
 
 @Service
 public class GitService {
-    @Value("${git.localRepo}")
-    private String pathRepo;
+
+    private final String pathRepo;
 
     private final Git git;
 
-    public GitService() throws Exception {
+    public GitService(@Value("${git.localRepo}")String pathRepo) throws Exception {
+        this.pathRepo = pathRepo;
         this.git = Git.open(new File(pathRepo)); // Убедись, что путь правильный
     }
 
